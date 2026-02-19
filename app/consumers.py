@@ -172,7 +172,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
                         "message": message.content,
                         "sender_id": self.user.id,
                         "sender_name": self.user.username,
-                        "timestamp": message.timestamp.strftime("%H:%M"),
+                        "timestamp": message.timestamp.isoformat(),
+
                     },
                 )
             

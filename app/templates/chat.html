@@ -3,412 +3,254 @@
 
 <div class="wa-chat-card">
 
-    <!-- Header -->
+    <!-- HEADER -->
     <div class="wa-header">
         <div class="wa-avatar">
             {{ other_user.username|first|upper }}
         </div>
 
-        <div class="wa-user-info">
+        <div>
             <div class="wa-name">{{ other_user.username }}</div>
-            <small id="user-status" class="{% if other_user.is_online %}online{% else %}offline{% endif %}">
+            <small id="user-status"
+                   class="{% if other_user.is_online %}online{% else %}offline{% endif %}">
                 {% if other_user.is_online %}Online{% else %}Offline{% endif %}
             </small>
-            <div id="typing-indicator" style="display: none; font-size: 0.85em; color: #999; margin-top: 3px;">
-                <span>typing</span>
-                <span class="typing-dots"></span>
+            <div id="typing-indicator" style="display:none;font-size:13px;color:#aaa;">
+                typing...
             </div>
         </div>
     </div>
 
-    <!-- Messages -->
+    <!-- CHAT BODY -->
     <div id="chat-box" class="wa-chat-body">
-
         {% for msg in messages %}
         <div class="wa-message-row {% if msg.sender == user %}sent{% else %}received{% endif %}"
-            data-message-id="{{ msg.id }}" onmouseover="showDeleteBtn(this)" onmouseout="hideDeleteBtn(this)">
+             data-id="{{ msg.id }}">
             <div class="wa-bubble">
-                {{ msg.content }}
+                {{ msg.content|escape }}
                 <span class="wa-time">
                     {{ msg.timestamp|time:"H:i" }}
                     {% if msg.sender == user %}
-                    <span class="tick-status" data-msg-id="{{ msg.id }}">
+                    <span class="tick" data-msg="{{ msg.id }}">
                         {% if msg.is_read %}✓✓{% else %}✓{% endif %}
                     </span>
                     {% endif %}
                 </span>
             </div>
+
             {% if msg.sender == user %}
-            <button class="delete-btn" onclick="deleteMessage({{ msg.id }})" style="display: none;" title="Delete">
-                <i class="fa-solid fa-trash"></i>
-            </button>
+            <button class="delete-btn" data-id="{{ msg.id }}">🗑</button>
             {% endif %}
         </div>
         {% endfor %}
-
     </div>
 
-    <!-- Input -->
+    <!-- INPUT -->
     <form id="chat-form" class="wa-input-area">
-        <input id="message-input" placeholder="Type a message" autocomplete="off" onkeydown="handleTyping(event)">
-
-        <button type="submit">
-            <i class="fa-solid fa-paper-plane"></i>
-        </button>
+        <input id="msg" placeholder="Type a message..." autocomplete="off">
+        <button type="submit">➤</button>
     </form>
 
 </div>
 
+<!-- DELETE POPUP -->
+<div id="deleteModal" class="delete-modal">
+    <div class="delete-box">
+        <p>Delete this message?</p>
+        <div class="delete-actions">
+            <button id="cancelDelete">Cancel</button>
+            <button id="confirmDelete">Delete</button>
+        </div>
+    </div>
+</div>
+
 <script>
-    // Chat WebSocket
-    let socket;
-    let presenceSocket;
-    let socketReady = false;
-    let reconnectAttempts = 0;
-    const MAX_RECONNECT_ATTEMPTS = 5;
-    const RECONNECT_DELAY = 3000; // 3 seconds
-    let heartbeatInterval;
+const box = document.getElementById("chat-box");
+const input = document.getElementById("msg");
+const typingBox = document.getElementById("typing-indicator");
+const statusText = document.getElementById("user-status");
 
-    function scrollToBottom() {
-        const box = document.getElementById("chat-box");
-        setTimeout(() => {
-            box.scrollTop = box.scrollHeight;
-        }, 50);
-    }
+const deleteModal = document.getElementById("deleteModal");
+const confirmDelete = document.getElementById("confirmDelete");
+const cancelDelete = document.getElementById("cancelDelete");
 
-    function connectChatSocket() {
-        try {
-            socket = new WebSocket(
-                "ws://" + window.location.host + "/ws/chat/{{ other_user.id }}/"
-            );
+let deleteId = null;
 
-            socket.onopen = () => {
-                console.log("Chat WebSocket connected");
-                socketReady = true;
-                reconnectAttempts = 0;
-                markInitialMessagesAsRead();
-                startHeartbeat();
-            };
+function scrollBottom(){
+    box.scrollTop = box.scrollHeight;
+}
 
-            socket.onmessage = function (e) {
-                try {
-                    const data = JSON.parse(e.data);
+const wsScheme = location.protocol === "https:" ? "wss" : "ws";
 
-                    if (data.type === "message") {
-                        const box = document.getElementById("chat-box");
-                        const side = data.sender_id == {{ user.id }
-                    } ?"sent" : "received";
+/* ================= CHAT SOCKET ================= */
 
-                    let messageHTML = `
-                            <div class="wa-message-row ${side}" data-message-id="${data.message_id}" onmouseover="showDeleteBtn(this)" onmouseout="hideDeleteBtn(this)">
-                                <div class="wa-bubble">
-                                    ${data.message}
-                                    <span class="wa-time">${data.timestamp}`;
+const chatSocket = new WebSocket(
+    wsScheme + "://" + location.host + "/ws/chat/{{ other_user.id }}/"
+);
 
-                    if (side === "sent") {
-                        messageHTML += `<span class="tick-status" data-msg-id="${data.message_id}">✓</span>`;
-                    }
+chatSocket.onopen = () => {
+    scrollBottom();
+    markRead();
+};
 
-                    messageHTML += `</span>
-                                </div>`;
+chatSocket.onmessage = e => {
+    const data = JSON.parse(e.data);
 
-                    if (side === "sent") {
-                        messageHTML += `<button class="delete-btn" onclick="deleteMessage(${data.message_id})" style="display: none;" title="Delete"><i class="fa-solid fa-trash"></i></button>`;
-                    }
+    if(data.type === "message"){
+        const side = data.sender_id == {{ user.id }} ? "sent" : "received";
 
-                    messageHTML += `</div>`;
+        let html = `
+        <div class="wa-message-row ${side}" data-id="${data.message_id}">
+            <div class="wa-bubble">
+                ${escapeHTML(data.message)}
+                <span class="wa-time">${formatTime(data.timestamp)}`;
 
-                    box.innerHTML += messageHTML;
-
-                    // If received message, mark as read
-                    if (side === "received" && socketReady && socket.readyState === WebSocket.OPEN) {
-                        try {
-                            socket.send(JSON.stringify({
-                                type: "mark_as_read",
-                                message_ids: [data.message_id]
-                            }));
-                        } catch (e) {
-                            console.error("Failed to mark as read:", e);
-                        }
-                    }
-
-                    scrollToBottom();
-                    stopTyping();
-
-                } else if (data.type === "read") {
-                    // Update tick status for read messages
-                    data.message_ids.forEach(msgId => {
-                        const tickSpan = document.querySelector(`[data-msg-id="${msgId}"]`);
-                        if (tickSpan) {
-                            tickSpan.textContent = "✓✓";
-                        }
-                    });
-
-                } else if (data.type === "typing") {
-                    showTypingIndicator();
-
-                } else if (data.type === "stop_typing") {
-                    hideTypingIndicator();
-
-                } else if (data.type === "deleted") {
-                    const msgElement = document.querySelector(`[data-message-id="${data.message_id}"]`);
-                    if (msgElement) {
-                        msgElement.remove();
-                    }
-
-                } else if (data.type === "error") {
-                    console.error("Server error:", data.message);
-
-                } else if (data.type === "pong") {
-                    // Heartbeat response - connection is still alive
-                    console.log("Heartbeat received");
-                }
-
-            } catch (e) {
-                console.error("Error processing message:", e);
-            }
-        };
-
-        socket.onerror = (e) => {
-            console.error("Chat socket error", e);
-            socketReady = false;
-            stopHeartbeat();
-        };
-
-        socket.onclose = () => {
-            console.log("Chat socket closed");
-            socketReady = false;
-            stopHeartbeat();
-            attemptReconnect();
-        };
-
-    } catch (e) {
-        console.error("Failed to create WebSocket:", e);
-        attemptReconnect();
-    }
-    }
-
-    function attemptReconnect() {
-        if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
-            reconnectAttempts++;
-            console.log(`Attempting to reconnect... (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
-            setTimeout(() => {
-                connectChatSocket();
-            }, RECONNECT_DELAY);
-        } else {
-            console.error("Max reconnection attempts reached");
-            alert("Connection lost. Please refresh the page.");
+        if(side === "sent"){
+            html += `<span class="tick" data-msg="${data.message_id}">✓</span>`;
         }
-    }
 
-    function startHeartbeat() {
-        // Send a ping every 30 seconds to keep connection alive
-        heartbeatInterval = setInterval(() => {
-            if (socketReady && socket.readyState === WebSocket.OPEN) {
-                try {
-                    socket.send(JSON.stringify({ type: "ping" }));
-                } catch (e) {
-                    console.error("Heartbeat error:", e);
-                }
-            }
-        }, 30000); // 30 seconds
-    }
+        html += `</span></div>`;
 
-    function stopHeartbeat() {
-        if (heartbeatInterval) {
-            clearInterval(heartbeatInterval);
-            heartbeatInterval = null;
+        if(side === "sent"){
+            html += `<button class="delete-btn" data-id="${data.message_id}">🗑</button>`;
         }
-    }
 
-    // Mark initially loaded unread messages as read
-    function markInitialMessagesAsRead() {
-        const receivedMessages = document.querySelectorAll('.wa-message-row.received[data-message-id]');
-        const unreadIds = Array.from(receivedMessages).map(msg => parseInt(msg.getAttribute('data-message-id')));
+        html += `</div>`;
 
-        if (unreadIds.length > 0 && socketReady && socket.readyState === WebSocket.OPEN) {
-            socket.send(JSON.stringify({
-                type: "mark_as_read",
-                message_ids: unreadIds
+        box.insertAdjacentHTML("beforeend", html);
+        scrollBottom();
+
+        if(side === "received"){
+            chatSocket.send(JSON.stringify({
+                type:"mark_as_read",
+                message_ids:[data.message_id]
             }));
         }
+
+        typingBox.style.display="none";
     }
 
-    // Send message
-    document.getElementById("chat-form").onsubmit = function (e) {
-        e.preventDefault();
-
-        if (!socketReady || socket.readyState !== WebSocket.OPEN) {
-            alert("Connection not ready. Please wait...");
-            return;
-        }
-
-        const input = document.getElementById("message-input");
-        const message = input.value.trim();
-        if (!message) return;
-
-        try {
-            socket.send(JSON.stringify({
-                type: "message",
-                message: message
-            }));
-            input.value = "";
-            scrollToBottom();
-            stopTyping();
-        } catch (e) {
-            console.error("Error sending message:", e);
-            alert("Failed to send message. Please try again.");
-        }
-    };
-
-    // Typing indicator
-    let typingTimeout;
-    let isTyping = false;
-
-    function handleTyping(event) {
-        const input = document.getElementById("message-input").value;
-
-        if (input.length > 0 && !isTyping) {
-            isTyping = true;
-            if (socketReady && socket.readyState === WebSocket.OPEN) {
-                try {
-                    socket.send(JSON.stringify({ type: "typing" }));
-                } catch (e) {
-                    console.error("Error sending typing indicator:", e);
-                }
-            }
-        }
-
-        clearTimeout(typingTimeout);
-        typingTimeout = setTimeout(() => {
-            if (isTyping && socketReady && socket.readyState === WebSocket.OPEN) {
-                isTyping = false;
-                try {
-                    socket.send(JSON.stringify({ type: "stop_typing" }));
-                } catch (e) {
-                    console.error("Error sending stop typing:", e);
-                }
-            }
-        }, 3000);
+    if(data.type === "read"){
+        data.message_ids.forEach(id=>{
+            const tick=document.querySelector(`[data-msg="${id}"]`);
+            if(tick) tick.textContent="✓✓";
+        });
     }
 
-    function showTypingIndicator() {
-        document.getElementById("typing-indicator").style.display = "block";
+    if(data.type === "typing"){
+        typingBox.style.display="block";
     }
 
-    function hideTypingIndicator() {
-        document.getElementById("typing-indicator").style.display = "none";
+    if(data.type === "stop_typing"){
+        typingBox.style.display="none";
     }
 
-    // Delete message
-    function showDeleteBtn(element) {
-        const deleteBtn = element.querySelector(".delete-btn");
-        if (deleteBtn) {
-            deleteBtn.style.display = "block";
-        }
+    if(data.type === "deleted"){
+        const el=document.querySelector(`[data-id="${data.message_id}"]`);
+        if(el) el.remove();
+    }
+};
+
+/* ================= SEND MESSAGE ================= */
+
+document.getElementById("chat-form").onsubmit=e=>{
+    e.preventDefault();
+
+    const text=input.value.trim();
+    if(!text) return;
+
+    chatSocket.send(JSON.stringify({
+        type:"message",
+        message:text
+    }));
+
+    input.value="";
+    typingBox.style.display="none";
+};
+
+/* ================= TYPING ================= */
+
+let typing=false;
+let timer;
+
+input.addEventListener("input",()=>{
+    if(!typing){
+        typing=true;
+        chatSocket.send(JSON.stringify({type:"typing"}));
     }
 
-    function hideDeleteBtn(element) {
-        const deleteBtn = element.querySelector(".delete-btn");
-        if (deleteBtn) {
-            deleteBtn.style.display = "none";
-        }
+    clearTimeout(timer);
+    timer=setTimeout(()=>{
+        typing=false;
+        chatSocket.send(JSON.stringify({type:"stop_typing"}));
+    },1000);
+});
+
+/* ================= DELETE POPUP ================= */
+
+box.addEventListener("click", e=>{
+    if(e.target.closest(".delete-btn")){
+        deleteId = e.target.closest(".delete-btn").dataset.id;
+        deleteModal.style.display="flex";
     }
+});
 
-    function deleteMessage(messageId) {
-        if (confirm("Delete this message?")) {
-            if (socketReady && socket.readyState === WebSocket.OPEN) {
-                try {
-                    socket.send(JSON.stringify({
-                        type: "delete_message",
-                        message_id: messageId
-                    }));
-                } catch (e) {
-                    console.error("Error deleting message:", e);
-                    alert("Failed to delete message.");
-                }
-            }
-        }
+confirmDelete.onclick = () => {
+    chatSocket.send(JSON.stringify({
+        type:"delete_message",
+        message_id: deleteId
+    }));
+    deleteModal.style.display="none";
+};
+
+cancelDelete.onclick = () => {
+    deleteModal.style.display="none";
+};
+
+/* ================= PRESENCE ================= */
+
+const presenceSocket = new WebSocket(
+    wsScheme + "://" + location.host + "/ws/presence/"
+);
+
+presenceSocket.onmessage = e=>{
+    const data = JSON.parse(e.data);
+    if(data.type==="presence" && data.user_id == {{ other_user.id }}){
+        statusText.textContent = data.is_online ? "Online" : "Offline";
+        statusText.className = data.is_online ? "online" : "offline";
     }
+};
 
-    function stopTyping() {
-        isTyping = false;
-        if (socketReady && socket.readyState === WebSocket.OPEN) {
-            try {
-                socket.send(JSON.stringify({ type: "stop_typing" }));
-            } catch (e) {
-                console.error("Error sending stop typing:", e);
-            }
-        }
+/* ================= UTIL ================= */
+
+function markRead(){
+    const unread=document.querySelectorAll(".received[data-id]");
+    const ids=[...unread].map(el=>el.dataset.id);
+    if(ids.length){
+        chatSocket.send(JSON.stringify({
+            type:"mark_as_read",
+            message_ids:ids
+        }));
     }
+}
 
-    // Presence Socket
-    function connectPresenceSocket() {
-        try {
-            presenceSocket = new WebSocket(
-                "ws://" + window.location.host + "/ws/presence/"
-            );
+function formatTime(iso){
+    const date=new Date(iso);
+    return date.toLocaleTimeString("en-IN",{
+        hour:"2-digit",
+        minute:"2-digit",
+        hour12:false,
+        timeZone:"Asia/Kolkata"
+    });
+}
 
-            presenceSocket.onmessage = function (e) {
-                try {
-                    const data = JSON.parse(e.data);
+function escapeHTML(text){
+    const div=document.createElement("div");
+    div.textContent=text;
+    return div.innerHTML;
+}
 
-                    if (data.type === "presence" && data.user_id == {{ other_user.id }
-                }) {
-                    const statusElement = document.getElementById("user-status");
-
-                    if (statusElement) {
-                        if (data.is_online) {
-                            statusElement.textContent = "Online";
-                            statusElement.className = "online";
-                        } else {
-                            statusElement.textContent = "Offline";
-                            statusElement.className = "offline";
-                        }
-                    }
-                }
-            } catch (e) {
-                console.error("Error processing presence message:", e);
-            }
-        };
-
-        presenceSocket.onopen = () => {
-            console.log("Presence socket connected");
-        };
-
-        presenceSocket.onerror = (e) => {
-            console.error("Presence socket error", e);
-        };
-
-        presenceSocket.onclose = () => {
-            console.log("Presence socket closed");
-            // Retry presence connection
-            setTimeout(() => connectPresenceSocket(), 5000);
-        };
-
-    } catch (e) {
-        console.error("Failed to create presence WebSocket:", e);
-        setTimeout(() => connectPresenceSocket(), 5000);
-    }
-    }
-
-    // Initialize connections on page load
-    window.onload = function () {
-        scrollToBottom();
-        connectChatSocket();
-        connectPresenceSocket();
-    };
-
-    // Cleanup on page unload
-    window.onbeforeunload = function () {
-        stopHeartbeat();
-        if (socket && socket.readyState === WebSocket.OPEN) {
-            socket.close();
-        }
-        if (presenceSocket && presenceSocket.readyState === WebSocket.OPEN) {
-            presenceSocket.close();
-        }
-    };
+scrollBottom();
 </script>
 
 {% endblock %}

@@ -63,7 +63,6 @@ body {
   align-items: center;
 }
 
-
 .wa-avatar {
   width: 42px;
   height: 42px;
@@ -89,18 +88,36 @@ body {
   color: #cbd5e1;
 }
 
-/* Chat body */
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* chat html  */
+
 .wa-chat-body {
   flex: 1;
-  padding: 20px;
+  padding: 18px;
   overflow-y: auto;
   background-image: url("https://i.pinimg.com/736x/8c/98/99/8c98994518b575bfd8c949e91d20548b.jpg");
+  background-size: cover;
+  background-position: center;
 }
 
-/* message row */
+/* ================= MESSAGE ROW ================= */
+
 .wa-message-row {
   display: flex;
   margin-bottom: 10px;
+  align-items: flex-end;
 }
 
 .wa-message-row.sent {
@@ -111,26 +128,31 @@ body {
   justify-content: flex-start;
 }
 
-/* bubble */
+/* ================= MESSAGE BUBBLE ================= */
+
 .wa-bubble {
-  max-width: 65%;
+  max-width: 68%;
   padding: 8px 12px;
-  border-radius: 8px;
+  border-radius: 10px;
   position: relative;
   font-size: 14px;
+  line-height: 1.4;
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.08);
+  word-wrap: break-word;
 }
 
-/* received */
+/* received bubble */
 .received .wa-bubble {
-  background: white;
+  background: #ffffff;
 }
 
-/* sent */
+/* sent bubble */
 .sent .wa-bubble {
   background: #dcf8c6;
 }
 
-/* bubble tails */
+/* ================= BUBBLE TAILS ================= */
+
 .received .wa-bubble::after {
   content: "";
   position: absolute;
@@ -138,7 +160,7 @@ body {
   top: 8px;
   border-width: 6px;
   border-style: solid;
-  border-color: transparent white transparent transparent;
+  border-color: transparent #ffffff transparent transparent;
 }
 
 .sent .wa-bubble::after {
@@ -151,7 +173,8 @@ body {
   border-color: transparent transparent transparent #dcf8c6;
 }
 
-/* time */
+/* ================= TIME ================= */
+
 .wa-time {
   display: block;
   font-size: 10px;
@@ -160,20 +183,30 @@ body {
   color: #667781;
 }
 
-/* input area */
+.tick {
+  margin-left: 4px;
+  font-size: 11px;
+  color: #4fc3f7;
+}
+
+/* input area  */
+
 .wa-input-area {
   display: flex;
   align-items: center;
   padding: 10px;
   background: #f0f2f5;
+  border-top: 1px solid #ddd;
 }
 
 .wa-input-area input {
   flex: 1;
   border: none;
   border-radius: 20px;
-  padding: 8px 15px;
+  padding: 10px 16px;
   outline: none;
+  font-size: 14px;
+  background: white;
 }
 
 .wa-input-area button {
@@ -184,13 +217,113 @@ body {
   height: 42px;
   border-radius: 50%;
   margin-left: 8px;
+  cursor: pointer;
+  transition: 0.2s;
 }
 
-/* scrollbar */
+.wa-input-area button:hover {
+  transform: scale(1.05);
+}
+
+/* delete button  */
+
+.delete-btn {
+  display: none;
+  border: none;
+  background: none;
+  cursor: pointer;
+  margin-left: 6px;
+  color: #888;
+  font-size: 22px;
+  transition: 0.2s;
+}
+
+.wa-message-row:hover .delete-btn {
+  display: inline;
+}
+
+.delete-btn:hover {
+  color: red;
+  transform: scale(2.1);
+}
+
+/* delete model  */
+
+.delete-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 999;
+}
+
+.delete-box {
+  background: white;
+  padding: 20px 22px;
+  border-radius: 10px;
+  text-align: center;
+  width: 260px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+}
+
+.delete-box p {
+  margin-bottom: 15px;
+  font-size: 15px;
+}
+
+.delete-actions {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+}
+
+.delete-actions button {
+  padding: 7px 16px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+#confirmDelete {
+  background: #e53935;
+  color: white;
+}
+
+#confirmDelete:hover {
+  background: #c62828;
+}
+
+#cancelDelete {
+  background: #e0e0e0;
+}
+
+/* scrollbar  */
+
 .wa-chat-body::-webkit-scrollbar {
   width: 6px;
 }
+
 .wa-chat-body::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.2);
+  background: rgba(0, 0, 0, 0.25);
   border-radius: 10px;
+}
+
+/* mobile  */
+
+@media (max-width: 600px) {
+  .wa-chat-body {
+    padding: 12px;
+  }
+
+  .wa-bubble {
+    max-width: 80%;
+    font-size: 13px;
+  }
+
+  .wa-input-area input {
+    font-size: 13px;
+  }
 }

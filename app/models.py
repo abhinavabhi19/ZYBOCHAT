@@ -29,7 +29,6 @@ class User(AbstractBaseUser, PermissionsMixin):
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
 
-    # REQUIRED FIELDS FOR TEST
     is_online = models.BooleanField(default=False)
     last_seen = models.DateTimeField(default=timezone.now)
 
@@ -67,7 +66,6 @@ class Message(models.Model):
 
     timestamp = models.DateTimeField(auto_now_add=True)
 
-    # read receipt ✓✓
     is_read = models.BooleanField(default=False)
 
     def __str__(self):

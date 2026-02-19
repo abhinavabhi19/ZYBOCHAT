@@ -1,0 +1,115 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<div class="card p-3">
+
+    <h5 class="mb-3"><i class="fa-solid fa-users me-2"></i>Your Chats</h5>
+
+    <div class="list-group list-group-flush" id="users-list">
+        {% for u in users %}
+        <a href="{% url 'chat' u.id %}"
+            class="list-group-item list-group-item-action d-flex justify-content-between align-items-center"
+            data-user-id="{{ u.id }}">
+
+            <div class="d-flex align-items-center gap-3">
+                <div class="avatar">{{ u.username|first|upper }}</div>
+                <div>
+                    {{ u.username }}
+                    <span class="unread-count badge bg-danger" data-user-unread="{{ u.id }}"
+                        style="display: none; margin-left: 8px;">0</span>
+                </div>
+            </div>
+
+            <span class="user-status" data-status-user-id="{{ u.id }}">
+                {% if u.is_online %}
+                <i class="fa-solid fa-circle text-success status-dot"></i> Online
+                {% else %}
+                <i class="fa-solid fa-circle text-danger status-dot"></i> Offline
+                {% endif %}
+            </span>
+
+        </a>
+        {% endfor %}
+    </div>
+
+</div>
+
+<script>
+    const presenceSocket = new WebSocket(
+        "ws://" + window.location.host + "/ws/presence/"
+    );
+
+    let unreadCountRefreshInterval;
+
+    // Load unread counts
+    function loadUnreadCounts() {
+        fetch("/api/unread-counts/")
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return response.json();
+            })
+            .then(data => {
+                console.log("Unread counts:", data);
+                Object.entries(data).forEach(([userId, count]) => {
+                    updateUnreadBadge(parseInt(userId), count);
+                });
+            })
+            .catch(error => console.error("Error loading unread counts:", error));
+    }
+
+    function updateUnreadBadge(userId, count) {
+        const badge = document.querySelector(`[data-user-unread="${userId}"]`);
+        if (badge) {
+            if (count > 0) {
+                badge.textContent = count;
+                badge.style.display = "inline-block";
+            } else {
+                badge.style.display = "none";
+            }
+        }
+    }
+
+    presenceSocket.onopen = function (e) {
+        console.log("Presence socket connected");
+        loadUnreadCounts();
+
+        // Refresh unread counts every 3 seconds
+        unreadCountRefreshInterval = setInterval(loadUnreadCounts, 3000);
+    };
+
+    presenceSocket.onmessage = function (e) {
+        const data = JSON.parse(e.data);
+
+        if (data.type === "presence") {
+            const statusElement = document.querySelector(`[data-status-user-id="${data.user_id}"]`);
+
+            if (statusElement) {
+                if (data.is_online) {
+                    statusElement.innerHTML = '<i class="fa-solid fa-circle text-success status-dot"></i> Online';
+                } else {
+                    statusElement.innerHTML = '<i class="fa-solid fa-circle text-danger status-dot"></i> Offline';
+                }
+            }
+        }
+    };
+
+    presenceSocket.onerror = function (error) {
+        console.error("Presence socket error:", error);
+    };
+
+    presenceSocket.onclose = function (e) {
+        console.log("Presence socket closed");
+        if (unreadCountRefreshInterval) {
+            clearInterval(unreadCountRefreshInterval);
+        }
+    };
+
+    // Fallback: Load unread counts on page load if WebSocket doesn't connect
+    window.addEventListener('load', () => {
+        setTimeout(loadUnreadCounts, 1000);
+    });
+</script>
+
+{% endblock %}

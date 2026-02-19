@@ -1,0 +1,287 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<div class="wa-chat-card">
+
+    <!-- Header -->
+    <div class="wa-header">
+        <div class="wa-avatar">
+            {{ other_user.username|first|upper }}
+        </div>
+
+        <div class="wa-user-info">
+            <div class="wa-name">{{ other_user.username }}</div>
+            <small id="user-status" class="{% if other_user.is_online %}online{% else %}offline{% endif %}">
+                {% if other_user.is_online %}Online{% else %}Offline{% endif %}
+            </small>
+            <div id="typing-indicator" style="display: none; font-size: 0.85em; color: #999; margin-top: 3px;">
+                <span>typing</span>
+                <span class="typing-dots"></span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Messages -->
+    <div id="chat-box" class="wa-chat-body">
+
+        {% for msg in messages %}
+        <div class="wa-message-row {% if msg.sender == user %}sent{% else %}received{% endif %}"
+            data-message-id="{{ msg.id }}" onmouseover="showDeleteBtn(this)" onmouseout="hideDeleteBtn(this)">
+            <div class="wa-bubble">
+                {{ msg.content }}
+                <span class="wa-time">
+                    {{ msg.timestamp|time:"H:i" }}
+                    {% if msg.sender == user %}
+                    <span class="tick-status" data-msg-id="{{ msg.id }}">
+                        {% if msg.is_read %}✓✓{% else %}✓{% endif %}
+                    </span>
+                    {% endif %}
+                </span>
+            </div>
+            {% if msg.sender == user %}
+            <button class="delete-btn" onclick="deleteMessage({{ msg.id }})" style="display: none;" title="Delete">
+                <i class="fa-solid fa-trash"></i>
+            </button>
+            {% endif %}
+        </div>
+        {% endfor %}
+
+    </div>
+
+    <!-- Input -->
+    <form id="chat-form" class="wa-input-area">
+        <input id="message-input" placeholder="Type a message" autocomplete="off" onkeydown="handleTyping(event)">
+
+        <button type="submit">
+            <i class="fa-solid fa-paper-plane"></i>
+        </button>
+    </form>
+
+</div>
+
+<script>
+    // Chat WebSocket
+    const socket = new WebSocket(
+        "ws://" + window.location.host + "/ws/chat/{{ other_user.id }}/"
+    );
+
+    // Presence WebSocket
+    const presenceSocket = new WebSocket(
+        "ws://" + window.location.host + "/ws/presence/"
+    );
+
+    let socketReady = false;
+
+    function scrollToBottom() {
+        const box = document.getElementById("chat-box");
+        setTimeout(() => {
+            box.scrollTop = box.scrollHeight;
+        }, 50);
+    }
+
+    // Mark initially loaded unread messages as read
+    function markInitialMessagesAsRead() {
+        const receivedMessages = document.querySelectorAll('.wa-message-row.received[data-message-id]');
+        const unreadIds = Array.from(receivedMessages).map(msg => parseInt(msg.getAttribute('data-message-id')));
+
+        if (unreadIds.length > 0) {
+            socket.send(JSON.stringify({
+                type: "mark_as_read",
+                message_ids: unreadIds
+            }));
+        }
+    }
+
+    // Receive messages
+    socket.onmessage = function (e) {
+        const data = JSON.parse(e.data);
+
+        if (data.type === "message") {
+            const box = document.getElementById("chat-box");
+            const side = data.sender_id == {{ user.id }
+        } ?"sent" : "received";
+
+        let messageHTML = `
+                <div class="wa-message-row ${side}" data-message-id="${data.message_id}" onmouseover="showDeleteBtn(this)" onmouseout="hideDeleteBtn(this)">
+                    <div class="wa-bubble">
+                        ${data.message}
+                        <span class="wa-time">${data.timestamp}`;
+
+        if (side === "sent") {
+            messageHTML += `<span class="tick-status" data-msg-id="${data.message_id}">✓</span>`;
+        }
+
+        messageHTML += `</span>
+                    </div>`;
+
+        if (side === "sent") {
+            messageHTML += `<button class="delete-btn" onclick="deleteMessage(${data.message_id})" style="display: none;" title="Delete"><i class="fa-solid fa-trash"></i></button>`;
+        }
+
+        messageHTML += `</div>`;
+
+        box.innerHTML += messageHTML;
+
+        // If received message, mark as read
+        if (side === "received") {
+            socket.send(JSON.stringify({
+                type: "mark_as_read",
+                message_ids: [data.message_id]
+            }));
+        }
+
+        scrollToBottom();
+        stopTyping();
+    } else if (data.type === "read") {
+        // Update tick status for read messages
+        data.message_ids.forEach(msgId => {
+            const tickSpan = document.querySelector(`[data-msg-id="${msgId}"]`);
+            if (tickSpan) {
+                tickSpan.textContent = "✓✓";
+            }
+        });
+    } else if (data.type === "typing") {
+        showTypingIndicator();
+    } else if (data.type === "stop_typing") {
+        hideTypingIndicator();
+    } else if (data.type === "deleted") {
+        const msgElement = document.querySelector(`[data-message-id="${data.message_id}"]`);
+        if (msgElement) {
+            msgElement.remove();
+        }
+    }
+    };
+
+    // Send message
+    document.getElementById("chat-form").onsubmit = function (e) {
+        e.preventDefault();
+
+        if (!socketReady) {
+            alert("Connection not ready. Please wait...");
+            return;
+        }
+
+        const input = document.getElementById("message-input");
+        const message = input.value.trim();
+        if (!message) return;
+
+        socket.send(JSON.stringify({
+            type: "message",
+            message: message
+        }));
+
+        input.value = "";
+        scrollToBottom();
+        stopTyping();
+    };
+
+    // Typing indicator
+    let typingTimeout;
+    let isTyping = false;
+
+    function handleTyping(event) {
+        const input = document.getElementById("message-input").value;
+
+        if (input.length > 0 && !isTyping) {
+            isTyping = true;
+            if (socketReady) {
+                socket.send(JSON.stringify({ type: "typing" }));
+            }
+        }
+
+        clearTimeout(typingTimeout);
+        typingTimeout = setTimeout(() => {
+            if (isTyping && socketReady) {
+                isTyping = false;
+                socket.send(JSON.stringify({ type: "stop_typing" }));
+            }
+        }, 3000);
+    }
+
+    function showTypingIndicator() {
+        document.getElementById("typing-indicator").style.display = "block";
+    }
+
+    function hideTypingIndicator() {
+        document.getElementById("typing-indicator").style.display = "none";
+    }
+
+    // Delete message
+    function showDeleteBtn(element) {
+        const deleteBtn = element.querySelector(".delete-btn");
+        if (deleteBtn) {
+            deleteBtn.style.display = "block";
+        }
+    }
+
+    function hideDeleteBtn(element) {
+        const deleteBtn = element.querySelector(".delete-btn");
+        if (deleteBtn) {
+            deleteBtn.style.display = "none";
+        }
+    }
+
+    function deleteMessage(messageId) {
+        if (confirm("Delete this message?")) {
+            socket.send(JSON.stringify({
+                type: "delete_message",
+                message_id: messageId
+            }));
+        }
+    }
+
+    function stopTyping() {
+        isTyping = false;
+        if (socketReady) {
+            socket.send(JSON.stringify({ type: "stop_typing" }));
+        }
+    }
+
+    // Chat socket connection handlers
+    socket.onopen = () => {
+        console.log("WebSocket connected");
+        socketReady = true;
+        markInitialMessagesAsRead();
+    };
+
+    socket.onerror = e => {
+        console.error("Socket error", e);
+        socketReady = false;
+    };
+
+    socket.onclose = () => {
+        console.log("Socket closed");
+        socketReady = false;
+    };
+
+    // Presence socket handlers
+    presenceSocket.onmessage = function (e) {
+        const data = JSON.parse(e.data);
+
+        if (data.type === "presence" && data.user_id == {{ other_user.id }
+    }) {
+        const statusElement = document.getElementById("user-status");
+
+        if (statusElement) {
+            if (data.is_online) {
+                statusElement.textContent = "Online";
+                statusElement.className = "online";
+            } else {
+                statusElement.textContent = "Offline";
+                statusElement.className = "offline";
+            }
+        }
+    }
+    };
+
+    presenceSocket.onopen = () => {
+        console.log("Presence socket connected");
+    };
+
+    presenceSocket.onerror = e => console.error("Presence error", e);
+    presenceSocket.onclose = () => console.log("Presence closed");
+
+    window.onload = scrollToBottom;
+</script>
+
+{% endblock %}

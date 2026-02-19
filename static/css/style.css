@@ -63,6 +63,7 @@ body {
   align-items: center;
 }
 
+
 .wa-avatar {
   width: 42px;
   height: 42px;
@@ -193,6 +194,3 @@ body {
   background: rgba(0, 0, 0, 0.2);
   border-radius: 10px;
 }
-
-
-

@@ -1,4 +1,5 @@
 import json
+import asyncio
 from channels.generic.websocket import AsyncWebsocketConsumer
 from django.contrib.auth import get_user_model
 from channels.db import database_sync_to_async
@@ -138,83 +139,101 @@ class ChatConsumer(AsyncWebsocketConsumer):
             )
 
     async def receive(self, text_data):
-        data = json.loads(text_data)
-        msg_type = data.get("type", "message")
-
-        if msg_type == "message":
-            message_text = data.get("message", "").strip()
-
-            if not message_text:
-                return
-
-            # save message
-            message = await self.save_message(message_text)
-
-            if not message:
-                return
-
-            # broadcast message with ID
-            await self.channel_layer.group_send(
-                self.room_group_name,
-                {
-                    "type": "chat_message",
-                    "message_id": message.id,
-                    "message": message.content,
-                    "sender_id": self.user.id,
-                    "sender_name": self.user.username,
-                    "timestamp": message.timestamp.strftime("%H:%M"),
-                },
-            )
+        try:
+            data = json.loads(text_data)
+            msg_type = data.get("type", "message")
+        except json.JSONDecodeError:
+            await self.send_error("Invalid JSON")
+            return
+        except Exception as e:
+            print(f"Receive JSON parse error: {e}")
+            await self.send_error("Server error")
+            return
         
-        elif msg_type == "mark_as_read":
-            # Mark messages as read
-            message_ids = data.get("message_ids", [])
-            if message_ids:
-                await self.mark_messages_read(message_ids, self.user.id)
-                
-                # Notify the sender about read receipts
+        try:
+            if msg_type == "message":
+                message_text = data.get("message", "").strip()
+
+                if not message_text:
+                    return
+
+                # save message
+                message = await self.save_message(message_text)
+
+                if not message:
+                    return
+
+                # broadcast message with ID
                 await self.channel_layer.group_send(
                     self.room_group_name,
                     {
-                        "type": "message_read",
-                        "message_ids": message_ids,
+                        "type": "chat_message",
+                        "message_id": message.id,
+                        "message": message.content,
+                        "sender_id": self.user.id,
+                        "sender_name": self.user.username,
+                        "timestamp": message.timestamp.strftime("%H:%M"),
                     },
                 )
-        
-        elif msg_type == "typing":
-            # Broadcast typing indicator
-            await self.channel_layer.group_send(
-                self.room_group_name,
-                {
-                    "type": "typing",
-                    "user_id": self.user.id,
-                },
-            )
-        
-        elif msg_type == "stop_typing":
-            # Broadcast stop typing
-            await self.channel_layer.group_send(
-                self.room_group_name,
-                {
-                    "type": "stop_typing",
-                    "user_id": self.user.id,
-                },
-            )
-        
-        elif msg_type == "delete_message":
-            # Delete message
-            message_id = data.get("message_id")
-            if message_id:
-                await self.delete_message(message_id, self.user.id)
-                
-                # Notify others about deletion
+            
+            elif msg_type == "ping":
+                # Respond to heartbeat ping
+                await self.send(text_data=json.dumps({
+                    "type": "pong",
+                }))
+            
+            elif msg_type == "mark_as_read":
+                # Mark messages as read
+                message_ids = data.get("message_ids", [])
+                if message_ids:
+                    await self.mark_messages_read(message_ids, self.user.id)
+                    
+                    # Notify the sender about read receipts
+                    await self.channel_layer.group_send(
+                        self.room_group_name,
+                        {
+                            "type": "message_read",
+                            "message_ids": message_ids,
+                        },
+                    )
+            
+            elif msg_type == "typing":
+                # Broadcast typing indicator
                 await self.channel_layer.group_send(
                     self.room_group_name,
                     {
-                        "type": "deleted",
-                        "message_id": message_id,
+                        "type": "typing",
+                        "user_id": self.user.id,
                     },
                 )
+            
+            elif msg_type == "stop_typing":
+                # Broadcast stop typing
+                await self.channel_layer.group_send(
+                    self.room_group_name,
+                    {
+                        "type": "stop_typing",
+                        "user_id": self.user.id,
+                    },
+                )
+            
+            elif msg_type == "delete_message":
+                # Delete message
+                message_id = data.get("message_id")
+                if message_id:
+                    await self.delete_message(message_id, self.user.id)
+                    
+                    # Notify others about deletion
+                    await self.channel_layer.group_send(
+                        self.room_group_name,
+                        {
+                            "type": "deleted",
+                            "message_id": message_id,
+                        },
+                    )
+        except Exception as e:
+            print(f"Receive processing error: {e}")
+            await self.send_error(f"Error processing message: {str(e)}")
 
     async def chat_message(self, event):
         """Send message to browser"""
@@ -226,6 +245,16 @@ class ChatConsumer(AsyncWebsocketConsumer):
             "sender_name": event["sender_name"],
             "timestamp": event["timestamp"],
         }))
+    
+    async def send_error(self, error_message):
+        """Send error to browser"""
+        try:
+            await self.send(text_data=json.dumps({
+                "type": "error",
+                "message": error_message,
+            }))
+        except Exception as e:
+            print(f"Error sending error message: {e}")
     
     async def message_read(self, event):
         """Send read receipt to browser"""

@@ -12,7 +12,7 @@
             data-user-id="{{ u.id }}">
 
             <div class="d-flex align-items-center gap-3">
-                <div class="avatar">{{ u.username|first|upper }}</div>
+                <div class="avatar" >{{ u.username|first|upper }}</div>
                 <div>
                     {{ u.username }}
                     <span class="unread-count badge bg-danger" data-user-unread="{{ u.id }}"

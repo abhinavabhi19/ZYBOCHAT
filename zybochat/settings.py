@@ -148,6 +148,19 @@ AUTH_USER_MODEL = 'app.User'
 
 LOGIN_URL = "login"
 
+# CHANNELS CONFIGURATION
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels.layers.InMemoryChannelLayer"
+    }
+}
+
+# ASGI configuration
+ASGI_THREADS = 4
+
+# WebSocket timeout (in seconds) - Keep connections alive
+WEBSOCKET_ACCEPT_ALL = False
+
 ASGI_APPLICATION = "zybochat.asgi.application"
 
 CHANNEL_LAYERS = {

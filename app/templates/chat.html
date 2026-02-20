@@ -250,6 +250,20 @@ function escapeHTML(text){
     return div.innerHTML;
 }
 
+// Close presence socket when user leaves this page (navigate away, close tab, etc)
+window.addEventListener('beforeunload', () => {
+    if (presenceSocket && presenceSocket.readyState === WebSocket.OPEN) {
+        presenceSocket.close();
+    }
+});
+
+// Also handle page hide (when switching tabs, etc)
+window.addEventListener('pagehide', () => {
+    if (presenceSocket && presenceSocket.readyState === WebSocket.OPEN) {
+        presenceSocket.close();
+    }
+});
+
 scrollBottom();
 </script>
 

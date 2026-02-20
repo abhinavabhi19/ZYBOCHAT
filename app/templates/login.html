@@ -1,6 +1,58 @@
 {% extends 'base.html' %}
 {% block content %}
 
+
+
+    {% if messages %}
+    <div id="toast-container" class="position-fixed top-0 end-0 p-3" style="z-index: 11;">
+
+        {% for message in messages %}
+        <div class="toast show d-flex align-items-start gap-2 
+        {% if message.tags == 'success' %}
+            bg-success
+        {% elif message.tags == 'error' %}
+            bg-danger
+        {% else %}
+            bg-info
+        {% endif %}
+        text-white mb-3">
+            <div class="toast-body d-flex align-items-center gap-2">
+                <!-- Font Awesome Icon -->
+                <div>
+                    {% if message.tags == 'success' %}
+                    <i class="fa-solid fa-circle-check"></i>
+                    {% elif message.tags == 'error' %}
+                    <i class="fa-solid fa-circle-exclamation"></i>
+                    {% else %}
+                    <i class="fa-solid fa-circle-info"></i>
+                    {% endif %}
+                </div>
+
+                <!-- Message Text -->
+                <div>
+                    {{ message }}
+                </div>
+            </div>
+
+            <!-- Close Button -->
+            <button type="button" class="btn-close btn-close-white"
+                onclick="this.parentElement.parentElement.remove()"></button>
+        </div>
+        {% endfor %}
+    </div>
+
+    <script>
+        setTimeout(() => {
+            document.querySelectorAll('#toast-container .toast').forEach(el => {
+                el.classList.remove('show');
+                setTimeout(() => el.remove(), 300);
+            });
+        }, 3000);
+    </script>
+    {% endif %}
+
+
+    
 <div class="auth-card mt-5">
     <h3>Welcome Back</h3>
 

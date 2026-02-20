@@ -9,7 +9,6 @@ User = get_user_model()
 
 
 class PresenceConsumer(AsyncWebsocketConsumer):
-    """Handles user presence updates for the user list"""
 
     async def connect(self):
         self.user = self.scope["user"]
@@ -64,7 +63,6 @@ class PresenceConsumer(AsyncWebsocketConsumer):
             )
 
     async def user_presence(self, event):
-        """Send presence update to browser"""
         await self.send(text_data=json.dumps({
             "type": "presence",
             "user_id": event["user_id"],
@@ -178,18 +176,15 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 )
             
             elif msg_type == "ping":
-                # Respond to heartbeat ping
                 await self.send(text_data=json.dumps({
                     "type": "pong",
                 }))
             
             elif msg_type == "mark_as_read":
-                # Mark messages as read
                 message_ids = data.get("message_ids", [])
                 if message_ids:
                     await self.mark_messages_read(message_ids, self.user.id)
                     
-                    # Notify the sender about read receipts
                     await self.channel_layer.group_send(
                         self.room_group_name,
                         {
@@ -199,7 +194,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     )
             
             elif msg_type == "typing":
-                # Broadcast typing indicator
                 await self.channel_layer.group_send(
                     self.room_group_name,
                     {
@@ -209,7 +203,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 )
             
             elif msg_type == "stop_typing":
-                # Broadcast stop typing
                 await self.channel_layer.group_send(
                     self.room_group_name,
                     {
@@ -237,7 +230,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
             await self.send_error(f"Error processing message: {str(e)}")
 
     async def chat_message(self, event):
-        """Send message to browser"""
         await self.send(text_data=json.dumps({
             "type": "message",
             "message_id": event["message_id"],
@@ -248,7 +240,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
         }))
     
     async def send_error(self, error_message):
-        """Send error to browser"""
         try:
             await self.send(text_data=json.dumps({
                 "type": "error",
@@ -258,14 +249,12 @@ class ChatConsumer(AsyncWebsocketConsumer):
             print(f"Error sending error message: {e}")
     
     async def message_read(self, event):
-        """Send read receipt to browser"""
         await self.send(text_data=json.dumps({
             "type": "read",
             "message_ids": event["message_ids"],
         }))
 
     async def typing(self, event):
-        """Broadcast typing indicator"""
         if event["user_id"] != self.user.id:
             await self.send(text_data=json.dumps({
                 "type": "typing",
@@ -273,7 +262,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
             }))
 
     async def stop_typing(self, event):
-        """Broadcast stop typing"""
         if event["user_id"] != self.user.id:
             await self.send(text_data=json.dumps({
                 "type": "stop_typing",
@@ -281,23 +269,20 @@ class ChatConsumer(AsyncWebsocketConsumer):
             }))
 
     async def deleted(self, event):
-        """Broadcast message deletion"""
         await self.send(text_data=json.dumps({
             "type": "deleted",
             "message_id": event["message_id"],
         }))
 
     async def user_status(self, event):
-        """Send online/offline updates"""
         await self.send(text_data=json.dumps({
             "type": "status",
             "user_id": event["user_id"],
             "is_online": event["is_online"],
         }))
 
-    # -------------------------
-    # DATABASE OPERATIONS
-    # -------------------------
+  
+
 
     @database_sync_to_async
     def save_message(self, content):
@@ -326,7 +311,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def mark_messages_read(self, message_ids, reader_id):
-        """Mark messages as read by the reader"""
         try:
             Message.objects.filter(
                 id__in=message_ids,
@@ -337,7 +321,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def delete_message(self, message_id, user_id):
-        """Delete a message (only if user is the sender)"""
         try:
             Message.objects.filter(id=message_id, sender_id=user_id).delete()
         except Exception as e:

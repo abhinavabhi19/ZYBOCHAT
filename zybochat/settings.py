@@ -25,12 +25,13 @@ SECRET_KEY = 'django-insecure-ig(ne#3=*@6t+m7s^@_f5+@2e&a2c9dusi7!_=d%)-^^zjjdcm
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = False
 
-ALLOWED_HOSTS = ["zybochat-test.up.railway.app","localhost", "127.0.0.1"]
+ALLOWED_HOSTS = ["zybochat-test.up.railway.app","localhost", "127.0.0.1","https://zybochat.onrender.com/"]
 
 
 
 CSRF_TRUSTED_ORIGINS = [
-    "https://zybochat-test.up.railway.app"
+    "https://zybochat-test.up.railway.app",
+    "https://zybochat.onrender.com/"
 ]
 
 

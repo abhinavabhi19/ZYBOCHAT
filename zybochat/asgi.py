@@ -7,11 +7,11 @@ from channels.auth import AuthMiddlewareStack
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'zybochat.settings')
 
-django.setup()   # ✅ VERY IMPORTANT FOR RENDER
+django.setup()  
 
 django_asgi_app = get_asgi_application()
 
-import app.routing   # ✅ Import AFTER django.setup()
+import app.routing  
 
 application = ProtocolTypeRouter({
     "http": django_asgi_app,

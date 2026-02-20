@@ -23,9 +23,15 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = 'django-insecure-ig(ne#3=*@6t+m7s^@_f5+@2e&a2c9dusi7!_=d%)-^^zjjdcm'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = False
 
-ALLOWED_HOSTS = ["*"]
+ALLOWED_HOSTS = ["zybochat-test.up.railway.app","localhost", "127.0.0.1"]
+
+
+
+CSRF_TRUSTED_ORIGINS = [
+    "https://zybochat-test.up.railway.app"
+]
 
 
 # Application definition
@@ -120,21 +126,15 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
 
-from pathlib import Path
-
-BASE_DIR = Path(__file__).resolve().parent.parent
-
-# URL to access static files
 STATIC_URL = '/static/'
 
-# Folder where you store static files during development
 STATICFILES_DIRS = [
     BASE_DIR / "static",
 ]
 
-# Folder where static files are collected for production
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
+STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 
 
 
@@ -146,7 +146,9 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 AUTH_USER_MODEL = 'app.User'
 
+
 LOGIN_URL = "login"
+
 
 # CHANNELS CONFIGURATION
 CHANNEL_LAYERS = {
@@ -161,10 +163,11 @@ ASGI_THREADS = 4
 # WebSocket timeout (in seconds) - Keep connections alive
 WEBSOCKET_ACCEPT_ALL = False
 
+
 ASGI_APPLICATION = "zybochat.asgi.application"
 
-CHANNEL_LAYERS = {
-    "default": {
-        "BACKEND": "channels.layers.InMemoryChannelLayer",
-    },
-}
+
+
+DATABASES['default']['CONN_MAX_AGE'] = 60
+
+

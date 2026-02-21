@@ -35,11 +35,86 @@
 </div>
 
 <script>
-    const presenceSocket = new WebSocket(
-        "ws://" + window.location.host + "/ws/presence/"
-    );
-
+    let presenceSocket;
     let unreadCountRefreshInterval;
+    let presenceHeartbeatInterval;
+    let reconnectAttempts = 0;
+    const MAX_RECONNECT_ATTEMPTS = 5;
+    const RECONNECT_DELAY = 3000; // 3 seconds
+    let shouldReconnect = true;
+
+    function initPresenceSocket() {
+        presenceSocket = new WebSocket(
+            "ws://" + window.location.host + "/ws/presence/"
+        );
+
+        presenceSocket.onopen = function (e) {
+            console.log("Presence socket connected");
+            reconnectAttempts = 0;
+            loadUnreadCounts();
+
+            // Refresh unread counts every 3 seconds
+            if (unreadCountRefreshInterval) {
+                clearInterval(unreadCountRefreshInterval);
+            }
+            unreadCountRefreshInterval = setInterval(loadUnreadCounts, 3000);
+
+            // Send heartbeat every 30 seconds to keep connection alive
+            if (presenceHeartbeatInterval) {
+                clearInterval(presenceHeartbeatInterval);
+            }
+            presenceHeartbeatInterval = setInterval(() => {
+                if (presenceSocket && presenceSocket.readyState === WebSocket.OPEN) {
+                    presenceSocket.send(JSON.stringify({ type: "ping" }));
+                }
+            }, 30000);
+        };
+
+        presenceSocket.onmessage = function (e) {
+            try {
+                const data = JSON.parse(e.data);
+
+                if (data.type === "presence") {
+                    console.log("Presence update received:", data);
+                    const statusElement = document.querySelector(`[data-status-user-id="${data.user_id}"]`);
+
+                    if (statusElement) {
+                        if (data.is_online) {
+                            statusElement.innerHTML = '<i class="fa-solid fa-circle text-success status-dot"></i> Online';
+                        } else {
+                            statusElement.innerHTML = '<i class="fa-solid fa-circle text-danger status-dot"></i> Offline';
+                        }
+                    } else {
+                        console.warn("Status element not found for user:", data.user_id);
+                    }
+                }
+            } catch (error) {
+                console.error("Error parsing presence message:", error);
+            }
+        };
+
+        presenceSocket.onerror = function (error) {
+            console.error("Presence socket error:", error);
+        };
+
+        presenceSocket.onclose = function (e) {
+            console.log("Presence socket closed. Code:", e.code, "Reason:", e.reason);
+            
+            if (unreadCountRefreshInterval) {
+                clearInterval(unreadCountRefreshInterval);
+            }
+            if (presenceHeartbeatInterval) {
+                clearInterval(presenceHeartbeatInterval);
+            }
+
+            // Attempt to reconnect if we're still on this page
+            if (shouldReconnect && reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+                reconnectAttempts++;
+                console.log(`Attempting to reconnect (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})...`);
+                setTimeout(initPresenceSocket, RECONNECT_DELAY);
+            }
+        };
+    }
 
     // Load unread counts
     function loadUnreadCounts() {
@@ -71,40 +146,8 @@
         }
     }
 
-    presenceSocket.onopen = function (e) {
-        console.log("Presence socket connected");
-        loadUnreadCounts();
-
-        // Refresh unread counts every 3 seconds
-        unreadCountRefreshInterval = setInterval(loadUnreadCounts, 3000);
-    };
-
-    presenceSocket.onmessage = function (e) {
-        const data = JSON.parse(e.data);
-
-        if (data.type === "presence") {
-            const statusElement = document.querySelector(`[data-status-user-id="${data.user_id}"]`);
-
-            if (statusElement) {
-                if (data.is_online) {
-                    statusElement.innerHTML = '<i class="fa-solid fa-circle text-success status-dot"></i> Online';
-                } else {
-                    statusElement.innerHTML = '<i class="fa-solid fa-circle text-danger status-dot"></i> Offline';
-                }
-            }
-        }
-    };
-
-    presenceSocket.onerror = function (error) {
-        console.error("Presence socket error:", error);
-    };
-
-    presenceSocket.onclose = function (e) {
-        console.log("Presence socket closed");
-        if (unreadCountRefreshInterval) {
-            clearInterval(unreadCountRefreshInterval);
-        }
-    };
+    // Initialize presence socket
+    initPresenceSocket();
 
     // Fallback: Load unread counts on page load if WebSocket doesn't connect
     window.addEventListener('load', () => {
@@ -113,15 +156,33 @@
 
     // Close presence socket when user leaves this page (navigate away, close tab, etc)
     window.addEventListener('beforeunload', () => {
+        shouldReconnect = false;
         if (presenceSocket && presenceSocket.readyState === WebSocket.OPEN) {
             presenceSocket.close();
+        }
+        if (unreadCountRefreshInterval) {
+            clearInterval(unreadCountRefreshInterval);
+        }
+        if (presenceHeartbeatInterval) {
+            clearInterval(presenceHeartbeatInterval);
         }
     });
 
     // Also handle page hide (when switching tabs, etc)
     window.addEventListener('pagehide', () => {
+        shouldReconnect = false;
         if (presenceSocket && presenceSocket.readyState === WebSocket.OPEN) {
             presenceSocket.close();
+        }
+    });
+
+    // Handle page visibility changes to reconnect if needed
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden && presenceSocket && presenceSocket.readyState === WebSocket.CLOSED) {
+            console.log("Page became visible, reconnecting...");
+            shouldReconnect = true;
+            reconnectAttempts = 0;
+            initPresenceSocket();
         }
     });
 </script>
